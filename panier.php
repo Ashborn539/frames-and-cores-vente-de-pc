@@ -74,7 +74,7 @@ if ($idClient > 0) {
 
     <main class="cart-container">
         <?php if ($articles === []): ?>
-            <p class="cart-empty">Votre panier est vide.</p>
+            <p class="cart-empty">Votre panier est vide ou les réservations ont expiré.</p>
         <?php else: ?>
             <div class="cart-items">
                 <?php foreach ($articles as $article): ?>
@@ -82,7 +82,9 @@ if ($idClient > 0) {
                         <div>
                             <h2><?php echo htmlspecialchars($article['nom'], ENT_QUOTES, 'UTF-8'); ?></h2>
                             <p>Quantité réservée : <?php echo $article['quantite_panier']; ?></p>
-                            <p class="reservation-countdown">
+                            <p class="reservation-countdown"
+                                data-expires-at="<?php echo htmlspecialchars((string) $article['date_expiration'], ENT_QUOTES, 'UTF-8'); ?>"
+                                data-stock-empty="<?php echo (int) $article['stock_disponible'] === 0 ? 'true' : 'false'; ?>">
                                 Réservation valable encore <?php echo (int) $article['secondes_restantes']; ?> seconde(s).
                             </p>
                         </div>
@@ -104,7 +106,9 @@ if ($idClient > 0) {
         </div>
     </main>
 
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="./assets/js/panier.js"></script>
+
 </body>
 
 </html>

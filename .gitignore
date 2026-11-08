@@ -19,3 +19,6 @@ Thumbs.db
 # Paramètres locaux de l'éditeur
 .vscode/*
 !.vscode/extensions.json
+
+# Autres 
+/graphify-out
