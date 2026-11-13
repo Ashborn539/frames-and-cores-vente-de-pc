@@ -1,38 +1,75 @@
 <?php
 declare(strict_types=1);
 
-session_start();
-require_once ('./bd.php');
-require_once ('./csrf.php');
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+require_once __DIR__ . '/bd.php';
+require_once __DIR__ . '/csrf.php';
+
+// Détection d'un appel AJAX
+$isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+    || (isset($_POST['ajax']) && (string) $_POST['ajax'] === '1')
+    || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'));
 
 /**
- * Redirige vers la page de connexion avec un message d'erreur.
+ * Gère l'envoi d'un message d'erreur de connexion (JSON en AJAX, ou redirection classique).
  *
- * @param string $message Message à afficher à l'utilisateur.
+ * @param string $message Message à destination de l'utilisateur.
+ * @param bool $isAjax Indique si la requête est AJAX.
+ * @param int $statusCode Code de statut HTTP.
  * @return never
  */
-function redirectToLogin(string $message): void
+function handleLoginError(string $message, bool $isAjax, int $statusCode = 200): void
 {
+    if ($isAjax) {
+        if ($statusCode !== 200) {
+            http_response_code($statusCode);
+        }
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => false,
+            'succes' => false,
+            'message' => $message
+        ]);
+        exit;
+    }
+
     header('Location: ../../connexion.php?error=' . rawurlencode($message));
     exit;
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    redirectToLogin('Veuillez utiliser le formulaire de connexion.');
+    handleLoginError('Veuillez utiliser le formulaire de connexion.', $isAjax);
 }
 
-requireValidCsrfToken();
+// Vérification CSRF
+$token = (string) ($_POST['csrf_token'] ?? '');
+$tokens = $_SESSION['csrf_tokens'] ?? [];
+$isTokenValid = false;
 
-// Les données d'authentification sont validées avant toute requête SQL.
+foreach ($tokens as $validToken) {
+    if (is_string($validToken) && hash_equals($validToken, $token)) {
+        $isTokenValid = true;
+        break;
+    }
+}
+
+if (!$isTokenValid) {
+    handleLoginError('Requête refusée. Le jeton de sécurité est absent ou expiré.', $isAjax, 403);
+}
+
+// Validation des paramètres
 $email = trim((string) ($_POST['mail'] ?? ''));
 $motDePasse = (string) ($_POST['mdp'] ?? '');
 
 if ($email === '' || $motDePasse === '') {
-    redirectToLogin('L’adresse e-mail et le mot de passe sont obligatoires.');
+    handleLoginError('L’adresse e-mail et le mot de passe sont obligatoires.', $isAjax);
 }
 
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-    redirectToLogin('L’adresse e-mail est invalide.');
+    handleLoginError('L’adresse e-mail est invalide.', $isAjax);
 }
 
 try {
@@ -47,18 +84,27 @@ try {
     $utilisateur = $requete->fetch();
 } catch (PDOException $exception) {
     error_log($exception->getMessage());
-    redirectToLogin('Une erreur est survenue. Veuillez réessayer.');
+    handleLoginError('Une erreur est survenue. Veuillez réessayer.', $isAjax);
 }
 
 if (!$utilisateur || !password_verify($motDePasse, $utilisateur['mdp'])) {
-    redirectToLogin('Adresse e-mail ou mot de passe incorrect.');
+    handleLoginError('Adresse e-mail ou mot de passe incorrect.', $isAjax);
 }
 
 session_regenerate_id(true);
-// L'identifiant client sert à rattacher le panier validé et l'historique au compte.
 $_SESSION['id_client'] = (int) $utilisateur['id_user'];
 $_SESSION['nom'] = $utilisateur['nom'];
 $_SESSION['prenom'] = $utilisateur['prenom'];
+
+if ($isAjax) {
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'success' => true,
+        'succes' => true,
+        'message' => 'Connexion réussie ! Redirection en cours...'
+    ]);
+    exit;
+}
 
 header('Location: ../../index.php');
 exit;

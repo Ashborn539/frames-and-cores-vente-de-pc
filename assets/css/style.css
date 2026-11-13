@@ -115,6 +115,56 @@ body {
     background-color: var(--accent-hover);
 }
 
+.formulaire .btn:disabled {
+    background-color: #cccccc !important;
+    color: #666666 !important;
+    cursor: not-allowed !important;
+    opacity: 0.65;
+}
+
+/* Styles de validation de formulaire */
+.formulaire input.is-valid {
+    border: 2px solid #28a745 !important;
+    background-color: #ccffcc !important;
+}
+
+.formulaire input.is-valid:focus {
+    outline: none !important;
+    border: 2px solid #28a745 !important;
+    background-color: #ccffcc !important;
+}
+
+.formulaire input.is-invalid {
+    border: 2px solid #dc3545 !important;
+    background-color: #ffcccc !important;
+}
+
+.formulaire input.is-invalid:focus {
+    outline: none !important;
+    border: 2px solid #dc3545 !important;
+    background-color: #ffcccc !important;
+}
+
+.formulaire .field-msg,
+.formulaire .erreur {
+    display: none;
+    font-size: 0.85rem;
+    margin-top: 5px;
+    line-height: 1.3;
+}
+
+.formulaire .field-msg.error,
+.formulaire .erreur.error {
+    display: block;
+    color: #dc3545 !important;
+}
+
+.formulaire .field-msg.success,
+.formulaire .erreur.success {
+    display: block;
+    color: #28a745 !important;
+}
+
 .formulaire-link {
     margin: 18px auto 0;
     color: var(--text-muted);

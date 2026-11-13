@@ -9,11 +9,12 @@ son panier entre deux requêtes.
 
 Technologies utilisées :
 
-- **PHP 8.0 ou supérieur** pour le rendu serveur et la logique métier ;
-- **MySQL** pour les articles, les utilisateurs et les commandes ;
+- **PHP 8.0 ou supérieur** pour le rendu serveur, les API AJAX et la logique métier ;
+- **JavaScript & jQuery 3.7+** pour les validations de formulaires en direct, les requêtes AJAX asynchrones et le compte à rebours du panier ;
+- **MySQL** pour les articles, les utilisateurs, les réservations et les commandes ;
 - **PDO** pour les requêtes préparées et les transactions ;
-- **HTML/CSS** pour la structure et l'interface ;
-- **Sessions PHP** pour l'authentification et le panier.
+- **HTML5/CSS3** pour la structure, le responsive design et les indicateurs visuels de validation ;
+- **Sessions PHP** pour l'authentification, le panier et la protection CSRF.
 
 Le code reste volontairement limité aux fonctionnalités communes à PHP 8.0, PHP 8.1,
 PHP 8.2, PHP 8.3 et PHP 8.4. Les extensions `PDO_MySQL` et `mbstring` doivent être
@@ -28,32 +29,37 @@ le code source et ne sont donc pas envoyés dans le HTML généré.
 TyldenHounsa/
 |-- index.php                         Catalogue et accueil
 |-- article.php                       Fiche et ajout au panier
-|-- panier.php                        Consultation et validation du panier
+|-- panier.php                        Consultation et validation du panier (avec compte à rebours dynamique)
 |-- acheter.php                       Enregistrement d'une commande
 |-- historique.php                    Historique du client connecté
 |-- compte.php                        Espace du client
-|-- connexion.php                     Formulaire de connexion
-|-- nouveau.php                       Formulaire de création de compte
+|-- connexion.php                     Formulaire de connexion (gestion AJAX intégrée)
+|-- nouveau.php                       Formulaire de création de compte (validation dynamique & AJAX)
 |-- contact.html                      Page statique de contact
 |-- ARCHITECTURE.md                   Documentation technique
+|-- readme.md                         Présentation générale et installation
+|-- TP7b.pdf                          Sujet des travaux pratiques (intégration AJAX)
 |
 |-- assets/
-|   |-- css/style.css                 Feuille de style commune
-|   |-- js/main.js                    Fichier conservé, sans logique active
-|   |-- js/panier.js                  Fichier réservé aux évolutions du panier
+|   |-- css/style.css                 Feuille de style commune et états de validation formulaires
+|   |-- js/main.js                    Script principal commun
+|   |-- js/panier.js                  Compte à rebours temps réel des réservations du panier
+|   |-- js/inscription.js             Validation en direct des champs et inscription AJAX (TP 7B)
+|   |-- js/connexion.js               Validation et connexion AJAX sans rechargement (TP 7B)
 |   `-- images/                        Images des produits
 |
 |-- includes/php/
 |   |-- bd.php                        Connexion PDO à MySQL
 |   |-- csrf.php                      Génération et validation des tokens CSRF
 |   |-- reservation.php                Réservations, expiration et libération du stock
-|   |-- submit_connexion.php          Traitement de la connexion
-|   |-- submit_formulaire.php         Traitement de l'inscription
+|   |-- verifier_email.php            API AJAX vérifiant la disponibilité d'un e-mail (TP 7B)
+|   |-- check_email.php               Alias de redirection vers verifier_email.php
+|   |-- submit_connexion.php          Traitement hybride (AJAX/POST classique) de la connexion
+|   |-- submit_formulaire.php         Traitement hybride (AJAX/POST classique) de l'inscription
 |   `-- disconnect.php                Fermeture de session
 |
 `-- database/
-    |-- computer_database.sql         Schéma et données initiales
-    `-- add_reservations.sql          Migration non destructive des réservations
+    `-- computer_database.sql         Schéma et données initiales
 ```
 
 ## 3. Flux applicatif
@@ -63,17 +69,25 @@ flowchart TD
     Catalogue[index.php]
     Fiche[article.php]
     Panier[panier.php]
+    PanierJS[assets/js/panier.js]
     Achat[acheter.php]
     Historique[historique.php]
     Compte[compte.php]
     Connexion[connexion.php]
+    ConnexionJS[assets/js/connexion.js]
+    SubConn[includes/php/submit_connexion.php]
     Inscription[nouveau.php]
+    InscriptionJS[assets/js/inscription.js]
+    VerifEmail[includes/php/verifier_email.php]
+    SubForm[includes/php/submit_formulaire.php]
     Session[(Session PHP)]
     Base[(MySQL)]
 
     Catalogue -->|POST id_art| Fiche
     Fiche -->|POST article et quantite| Session
     Session --> Panier
+    Panier --> PanierJS
+    PanierJS -->|Recharge si temps expire| Panier
     Panier -->|GET page de confirmation| Achat
     Achat -->|POST avec token CSRF| Achat
     Achat -->|INSERT Commandes et confirmation reservations| Base
@@ -82,8 +96,21 @@ flowchart TD
     Achat -->|unset panier après succès| Session
     Compte --> Historique
     Historique -->|SELECT filtré par id_client| Base
-    Connexion -->|POST| Session
-    Inscription -->|POST| Session
+
+    Inscription --> InscriptionJS
+    InscriptionJS -->|AJAX saisie e-mail| VerifEmail
+    VerifEmail -->|SELECT COUNT mail| Base
+    InscriptionJS -->|AJAX submit| SubForm
+    SubForm -->|INSERT user| Base
+    SubForm -->|JSON succes et connexion| Session
+    InscriptionJS -->|Redirection 1s après succes| Catalogue
+
+    Connexion --> ConnexionJS
+    ConnexionJS -->|AJAX submit| SubConn
+    SubConn -->|SELECT user et password_verify| Base
+    SubConn -->|JSON succes et connexion| Session
+    ConnexionJS -->|Redirection 1s après succes| Catalogue
+
     Catalogue -->|SELECT articles| Base
     Fiche -->|SELECT article| Base
 ```
@@ -132,23 +159,39 @@ Le bouton de suppression est traité par `panier.php` en `POST`. Il utilise
 une transaction pour remettre les quantités réservées en stock, passe les
 réservations à l'état `annulee`, vide la session, puis redirige vers la même page.
 
-## 5. Authentification et sessions
+## 5. Authentification, inscription et interactions AJAX (TP 7B)
 
-`submit_connexion.php` recherche l'utilisateur par e-mail et vérifie le mot de passe
-avec `password_verify()`. Après une connexion réussie, l'identifiant est conservé avec
-les informations d'affichage :
+### Validation interactive côté client (jQuery)
+
+Dans [`nouveau.php`](nouveau.php) et [`connexion.php`](connexion.php), l'utilisateur bénéficie d'un retour visuel instantané sans attendre la soumission du formulaire :
+
+- **États visuels dynamiques :** dès la saisie ou la perte de focus (`input`, `change`, `blur`), chaque champ passe en vert (`#ccffcc` avec bordure verte `#28a745`) s'il est valide, ou en rouge (`#ffcccc` avec bordure rouge `#dc3545`) en cas d'erreur.
+- **Messages explicatifs :** une courte phrase sous le champ (`.field-msg.erreur`) indique la cause exacte de l'invalidité.
+- **Blocage préventif :** le bouton de soumission est désactivé (`disabled`) avec un curseur `not-allowed` et une opacité réduite tant que l'ensemble des critères n'est pas réuni.
+- **Règles de validation :**
+  - Nom, prénom, adresse et téléphone : champs non vides ;
+  - Adresse e-mail : format valide (expression régulière RFC) et vérification d'unicité ;
+  - Mot de passe : au moins 1 lettre, 1 chiffre et 1 caractère spécial (expression régulière `^(?=.*[a-zA-Z])(?=.*[0-9])(?=.*[^a-zA-Z0-9\s]).+$`) ;
+  - Confirmation : correspondance exacte avec le premier mot de passe.
+
+### Vérification d'unicité d'e-mail en AJAX
+
+[`assets/js/inscription.js`](assets/js/inscription.js) interroge le point d'accès [`includes/php/verifier_email.php`](includes/php/verifier_email.php) (ou son alias [`includes/php/check_email.php`](includes/php/check_email.php)) en `GET` avec un délai d'attente (debounce de 300 ms).  
+Le script PHP effectue un comptage préparé sur la table `user` (`SELECT COUNT(*) FROM user WHERE mail = :mail`) et renvoie un booléen lisible dans une réponse JSON (`existe`, `disponible`, `message`). Si l'adresse est déjà enregistrée, le champ est invalidé et la création de compte reste verrouillée.
+
+### Création de compte et connexion asynchrones (sans rechargement)
+
+- **Création de compte :** la soumission du formulaire d'inscription est interceptée via AJAX. Le fichier [`includes/php/submit_formulaire.php`](includes/php/submit_formulaire.php) détecte l'appel asynchrone, valide les données, hache le mot de passe avec `password_hash()`, insère la ligne dans la table `user`, et connecte immédiatement l'utilisateur en session. Il retourne un JSON confirmant l'opération. La page affiche alors un message de succès vert dans `#form-feedback` puis redirige automatiquement le client vers l'accueil (`index.php`) une seconde après (`setTimeout`).
+- **Connexion :** [`assets/js/connexion.js`](assets/js/connexion.js) soumet les identifiants en AJAX vers [`includes/php/submit_connexion.php`](includes/php/submit_connexion.php). En cas de succès, la session est régénérée, l'identifiant client est stocké (`$_SESSION['id_client']`), et une redirection vers l'accueil s'opère après 1 seconde. En cas d'erreur, le message renvoyé par le serveur s'affiche en rouge sans recharger la page.
+- **Compatibilité descendante :** les scripts de traitement PHP conservent leur logique de redirection classique (`header('Location: ...')`) si la requête ne provient pas d'AJAX, assurant ainsi un fonctionnement robuste même sans JavaScript.
 
 ```php
-$_SESSION['id_client'] = $utilisateur['id_user'];
+$_SESSION['id_client'] = (int) $utilisateur['id_user'];
 $_SESSION['nom'] = $utilisateur['nom'];
 $_SESSION['prenom'] = $utilisateur['prenom'];
 ```
 
-`submit_formulaire.php` crée le compte avec `password_hash()`, récupère l'identifiant
-généré par MySQL et initialise les mêmes valeurs de session.
-
-`compte.php` est accessible uniquement lorsque le nom et le prénom sont présents dans
-la session. Le lien vers `historique.php` permet au client de consulter ses commandes.
+`compte.php` est accessible uniquement lorsque le client est authentifié. Le lien vers `historique.php` lui permet de consulter l'état de ses commandes antérieures.
 
 ## 6. Protection CSRF
 
