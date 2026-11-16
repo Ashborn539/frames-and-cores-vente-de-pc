@@ -749,19 +749,11 @@ footer {
     font-size: 11px;
     font-weight: 700;
     padding: 2px 7px;
-    border-radius: 10px;
-    background-color: rgba(255, 204, 0, 0.18);
-    color: var(--accent);
-    border: 1px solid rgba(255, 204, 0, 0.45);
+    border-radius: none;
+    background-color: rgba(49, 43, 19, 0.18);
+    color: grey;
+    border: 1px solid rgba(63, 55, 21, 0.45);
     letter-spacing: 0.2px;
-}
-
-.chat-status-dot {
-    width: 10px;
-    height: 10px;
-    background-color: var(--stock-ok);
-    border-radius: 50%;
-    box-shadow: 0 0 8px rgba(22, 131, 75, 0.8);
 }
 
 #chat-close-btn {

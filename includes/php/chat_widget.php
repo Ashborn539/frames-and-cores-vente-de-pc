@@ -11,7 +11,6 @@ $lifetimeMinutes = getChatMessageLifetimeMinutes();
     <div id="chat-box" class="chat-box-hidden" aria-hidden="true">
         <div class="chat-header">
             <div class="chat-header-title">
-                <span class="chat-status-dot"></span>
                 <h3>Discussion générale</h3>
                 <span class="chat-duration-badge" id="chat-duration-badge"><?php echo $lifetimeMinutes; ?> min</span>
             </div>
