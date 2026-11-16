@@ -98,6 +98,21 @@ CREATE TABLE IF NOT EXISTS `Commandes` (
   CONSTRAINT `fk_commandes_client` FOREIGN KEY (`id_client`) REFERENCES `user` (`id_user`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- --------------------------------------------------------
+
+--
+-- Structure de la table `chat_messages`
+--
+
+CREATE TABLE IF NOT EXISTS `chat_messages` (
+  `id_message` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `id_user` INT UNSIGNED NOT NULL,
+  `message` VARCHAR(256) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `date_envoi` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id_message`),
+  KEY `idx_chat_date` (`date_envoi`),
+  CONSTRAINT `fk_chat_user` FOREIGN KEY (`id_user`) REFERENCES `user` (`id_user`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Déchargement des données de la table `articles`

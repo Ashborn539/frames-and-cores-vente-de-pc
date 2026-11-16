@@ -121,6 +121,10 @@ if (is_array($article)) {
         <?php endif; ?>
     
     </main>
+
+    <!-- Intégration du Widget Tchat -->
+    <?php include_once('./includes/php/chat_widget.php'); ?>
+    <script src="./assets/js/chat.js"></script>
 </body>
 
 </html>

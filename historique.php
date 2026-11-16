@@ -63,5 +63,9 @@ $commandes = $requete->fetchAll();
         <?php endif; ?>
         <p class="formulaire-link"><a href="./compte.php">Retour au compte</a></p>
     </main>
+
+    <!-- Intégration du Widget Tchat -->
+    <?php include_once('./includes/php/chat_widget.php'); ?>
+    <script src="./assets/js/chat.js"></script>
 </body>
 </html>

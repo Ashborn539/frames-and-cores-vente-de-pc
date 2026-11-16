@@ -109,6 +109,9 @@ if ($idClient > 0) {
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="./assets/js/panier.js"></script>
 
+    <!-- Intégration du Widget Tchat -->
+    <?php include_once('./includes/php/chat_widget.php'); ?>
+    <script src="./assets/js/chat.js"></script>
 </body>
 
 </html>

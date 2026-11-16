@@ -6,6 +6,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+.venv
 
 # Dépendances
 /vendor/
@@ -20,5 +21,9 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 
+#Dossier d'entrainement du model
+/includes/filter/data
+
 # Autres 
 /graphify-out
+/TPfiltre
