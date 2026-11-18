@@ -8,6 +8,9 @@ Il permet de consulter des articles, d'afficher leur détail, de gérer un panie
 - Affichage du catalogue d'articles disponibles depuis une base de données MySQL
 - Consultation de la fiche détaillée d'un produit
 - Réservation temporaire d'articles et gestion du panier avec compte à rebours dynamique en temps réel
+- Tchat général en direct sous forme de bulle flottante accessible sur les pages clés
+- Modération automatique des messages par apprentissage automatique (TF-IDF et Perceptron)
+- Rétention temporaire et purge automatique des messages expirés (durée paramétrable)
 - Validation interactive des formulaires (retours visuels vert/rouge et contrôle de mot de passe complexe)
 - Vérification asynchrone de l'unicité de l'e-mail en temps réel (AJAX)
 - Inscription et connexion sans rechargement de page avec redirection temporisée (AJAX)
@@ -35,10 +38,12 @@ Il permet de consulter des articles, d'afficher leur détail, de gérer un panie
 - `nouveau.php` : création de compte avec validation dynamique des champs et AJAX
 - `contact.html` : formulaire de contact
 - `ARCHITECTURE.md` : documentation technique et diagrammes d'architecture
-- `database/` : script SQL de création et d'initialisation de la base de données
-- `assets/css/` : feuille de style globale et styles des états de validation
-- `assets/js/` : scripts JavaScript et jQuery (gestion AJAX, validation formulaires, compte à rebours)
-- `includes/php/` : logique serveur (connexion PDO, CSRF, gestion du stock/réservations, traitements AJAX)
+- `database/` : script SQL de création et d'initialisation de la base de données (dont `chat_messages`)
+- `assets/css/` : feuille de style globale, thème sombre et doré du tchat
+- `assets/js/` : scripts JavaScript et jQuery (gestion AJAX du tchat, formulaires, compte à rebours)
+- `includes/php/` : logique serveur (connexion PDO, CSRF, gestion du stock, endpoints AJAX et modération du tchat)
+- `includes/data/` : dictionnaire des poids du modèle de modération (`model_weights.json`)
+- `includes/filter/` : scripts d'entraînement Python du modèle Perceptron
 
 ## Crédits et Droits d'auteur
 

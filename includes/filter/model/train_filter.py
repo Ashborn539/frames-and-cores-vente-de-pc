@@ -82,14 +82,11 @@ def train_and_export():
     }
 
     # shortcut: ecriture sur deux dossiers pour assurer la disponibilite selon le point d'entree PHP
-    for target in [
-        os.path.abspath(os.path.join(base_dir, '..', '..', 'data', 'model_weights.json')),
-        os.path.abspath(os.path.join(base_dir, '..', 'data', 'model_weights.json'))
-    ]:
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        with open(target, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
-        print(f"Poids exportes dans {target}")
+    target = os.path.abspath(os.path.join(base_dir, '..', 'data', 'model_weights.json'))
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    with open(target, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
+    print(f"Poids exportes dans {target}")
 
 if __name__ == '__main__':
     train_and_export()

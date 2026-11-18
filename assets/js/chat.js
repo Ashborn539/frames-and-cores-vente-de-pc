@@ -1,130 +1,110 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const boutonBasculer = document.getElementById('chat-toggle-btn');
-    const boutonFermer = document.getElementById('chat-close-btn');
-    const boiteChat = document.getElementById('chat-box');
-    const conteneurMessages = document.getElementById('chat-messages-container');
-    const formulaireChat = document.getElementById('chat-form');
-    const champSaisieChat = document.getElementById('chat-input');
-    const alerteErreur = document.getElementById('chat-error-alert');
+$(function () {
+    const $toggleBtn = $('#chat-toggle-btn');
+    const $closeBtn = $('#chat-close-btn');
+    const $chatBox = $('#chat-box');
+    const $messagesContainer = $('#chat-messages-container');
+    const $chatForm = $('#chat-form');
+    const $chatInput = $('#chat-input');
+    const $errorAlert = $('#chat-error-alert');
+    const $durationBadge = $('#chat-duration-badge');
 
-    let estChatOuvert = false;
-    let intervalleActualisation = null;
-    let dernierJsonMessages = '';
-    let estPremierChargement = true;
+    let isChatOpen = false;
+    let pollInterval = null;
+    let lastMessagesJson = '';
+    let isFirstLoad = true;
 
-    // Ouverture et fermeture du tchat
-    const basculerChat = () => {
-        estChatOuvert = !estChatOuvert;
-        if (estChatOuvert) {
-            boiteChat.classList.remove('chat-box-hidden');
-            boiteChat.setAttribute('aria-hidden', 'false');
-            estPremierChargement = true;
-            recupererMessages(true);
-            if (!intervalleActualisation) {
-                intervalleActualisation = setInterval(() => recupererMessages(false), 2500);
+    // Bascule de l'affichage du tchat
+    const toggleChat = () => {
+        isChatOpen = !isChatOpen;
+        if (isChatOpen) {
+            $chatBox.removeClass('chat-box-hidden').attr('aria-hidden', 'false');
+            isFirstLoad = true;
+            fetchMessages(true);
+            if (!pollInterval) {
+                pollInterval = setInterval(() => fetchMessages(false), 2500);
             }
-            if (champSaisieChat) champSaisieChat.focus();
+            $chatInput.trigger('focus');
         } else {
-            boiteChat.classList.add('chat-box-hidden');
-            boiteChat.setAttribute('aria-hidden', 'true');
-            if (intervalleActualisation) {
-                clearInterval(intervalleActualisation);
-                intervalleActualisation = null;
+            $chatBox.addClass('chat-box-hidden').attr('aria-hidden', 'true');
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
             }
         }
     };
 
-    if (boutonBasculer) boutonBasculer.addEventListener('click', basculerChat);
-    if (boutonFermer) boutonFermer.addEventListener('click', basculerChat);
+    $toggleBtn.on('click', toggleChat);
+    $closeBtn.on('click', toggleChat);
 
-    // Isole le defilement pour eviter de faire bouger la page
-    if (boiteChat) {
-        boiteChat.addEventListener('wheel', (evenement) => {
-            evenement.stopPropagation();
-        }, { passive: true });
-    }
+    // Empeche la molette du tchat de faire defiler la page
+    $chatBox.on('wheel', function (e) {
+        e.stopPropagation();
+    });
 
-    function recupererMessages(forcerDefilement = false) {
-        fetch('includes/php/chat_fetch.php')
-            .then(reponse => reponse.json())
-            .then(donnees => {
-                if (!donnees.success) return;
+    function fetchMessages(forceScroll = false) {
+        $.getJSON('includes/php/chat_fetch.php')
+            .done(function (data) {
+                if (!data || !data.success) return;
 
-                if (donnees.lifetime_minutes) {
-                    const badgeDuree = document.getElementById('chat-duration-badge');
-                    if (badgeDuree) {
-                        badgeDuree.textContent = `${donnees.lifetime_minutes} min`;
-                    }
+                if (data.lifetime_minutes && $durationBadge.length) {
+                    $durationBadge.text(data.lifetime_minutes + ' min');
                 }
 
-                // Evite de reconstruire le DOM si les messages n'ont pas change
-                const jsonActuel = JSON.stringify(donnees.messages);
-                if (jsonActuel === dernierJsonMessages && !forcerDefilement) {
+                const currentJson = JSON.stringify(data.messages);
+                if (currentJson === lastMessagesJson && !forceScroll) {
                     return;
                 }
 
-                // On verifie si l'utilisateur etait en train de lire plus haut
-                const estProcheDuBas = conteneurMessages.scrollHeight - conteneurMessages.scrollTop - conteneurMessages.clientHeight <= 60;
-                dernierJsonMessages = jsonActuel;
+                const el = $messagesContainer[0];
+                const isNearBottom = el ? (el.scrollHeight - el.scrollTop - el.clientHeight <= 60) : true;
+                lastMessagesJson = currentJson;
 
-                if (donnees.messages.length === 0) {
-                    const dureeDeVie = donnees.lifetime_minutes || 10;
-                    conteneurMessages.innerHTML = `<p class="chat-empty">Aucun message récent (les messages expirent après ${dureeDeVie} min).</p>`;
+                if (!data.messages || data.messages.length === 0) {
+                    const lifetime = data.lifetime_minutes || 10;
+                    $messagesContainer.html('<p class="chat-empty">Aucun message récent (les messages expirent après ' + lifetime + ' min).</p>');
                     return;
                 }
 
-                conteneurMessages.innerHTML = '';
-                donnees.messages.forEach(message => {
-                    const elementMessage = document.createElement('div');
-                    elementMessage.className = 'chat-msg-item' + (message.is_me ? ' chat-msg-mine' : '');
-                    elementMessage.textContent = message.text;
-                    conteneurMessages.appendChild(elementMessage);
+                $messagesContainer.empty();
+                $.each(data.messages, function (_, msg) {
+                    const $item = $('<div>')
+                        .addClass('chat-msg-item' + (msg.is_me ? ' chat-msg-mine' : ''))
+                        .text(msg.text);
+                    $messagesContainer.append($item);
                 });
 
-                // On descend auto uniquement si on est deja en bas ou a l'envoi
-                if (forcerDefilement || estPremierChargement || estProcheDuBas) {
-                    conteneurMessages.scrollTop = conteneurMessages.scrollHeight;
-                    estPremierChargement = false;
+                if (forceScroll || isFirstLoad || isNearBottom) {
+                    if (el) $messagesContainer.scrollTop(el.scrollHeight);
+                    isFirstLoad = false;
                 }
             })
-            .catch(erreur => console.error('Erreur chat_fetch:', erreur));
+            .fail(function (xhr, status, err) {
+                console.error('Erreur chat_fetch:', err);
+            });
     }
 
-    // Envoi du message
-    if (formulaireChat) {
-        formulaireChat.addEventListener('submit', (evenement) => {
-            evenement.preventDefault();
-            const message = champSaisieChat.value.trim();
-            if (!message) return;
+    // Envoi asynchrone du formulaire
+    $chatForm.on('submit', function (e) {
+        e.preventDefault();
+        const message = $.trim($chatInput.val());
+        if (!message) return;
 
-            alerteErreur.classList.add('chat-alert-hidden');
-            alerteErreur.textContent = '';
+        $errorAlert.addClass('chat-alert-hidden').empty();
 
-            const donneesFormulaire = new URLSearchParams();
-            donneesFormulaire.append('message', message);
-
-            fetch('includes/php/chat_send.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                },
-                body: donneesFormulaire.toString()
-            })
-                .then(async (reponse) => {
-                    const donnees = await reponse.json();
-                    if (!reponse.ok || !donnees.success) {
-                        throw donnees;
-                    }
-                    return donnees;
-                })
-                .then(() => {
-                    champSaisieChat.value = '';
-                    recupererMessages(true);
-                })
-                .catch(erreur => {
-                    alerteErreur.textContent = erreur.message || "Erreur lors de l'envoi du message.";
-                    alerteErreur.classList.remove('chat-alert-hidden');
-                });
+        $.ajax({
+            url: 'includes/php/chat_send.php',
+            method: 'POST',
+            data: { message: message },
+            dataType: 'json'
+        })
+        .done(function () {
+            $chatInput.val('');
+            fetchMessages(true);
+        })
+        .fail(function (xhr) {
+            const res = xhr.responseJSON || {};
+            const msg = res.message || "Erreur lors de l'envoi du message.";
+            $errorAlert.text(msg).removeClass('chat-alert-hidden');
         });
-    }
+    });
 });

@@ -44,6 +44,7 @@ $csrfToken = csrfToken();
         <button type="submit" class="disconnect-btn">Se deconncter</button>
     </form>
 
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <!-- Intégration du Widget Tchat -->
     <?php include_once('./includes/php/chat_widget.php'); ?>
     <script src="./assets/js/chat.js"></script>

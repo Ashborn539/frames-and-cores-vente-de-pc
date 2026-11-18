@@ -9,11 +9,12 @@ son panier entre deux requêtes.
 
 Technologies utilisées :
 
-- **PHP 8.0 ou supérieur** pour le rendu serveur, les API AJAX et la logique métier ;
-- **JavaScript & jQuery 3.7+** pour les validations de formulaires en direct, les requêtes AJAX asynchrones et le compte à rebours du panier ;
-- **MySQL** pour les articles, les utilisateurs, les réservations et les commandes ;
+- **PHP 8.0 ou supérieur** pour le rendu serveur, les API AJAX, le filtrage de modération et la logique métier ;
+- **JavaScript & jQuery 3.7+** pour les validations de formulaires, les requêtes AJAX asynchrones, le compte à rebours et le tchat en direct ;
+- **Python 3 & scikit-learn** pour l'entraînement hors-ligne du perceptron et l'extraction des poids TF-IDF ;
+- **MySQL** pour les articles, les utilisateurs, les réservations, les commandes et les messages de tchat ;
 - **PDO** pour les requêtes préparées et les transactions ;
-- **HTML5/CSS3** pour la structure, le responsive design et les indicateurs visuels de validation ;
+- **HTML5/CSS3** pour la structure, le responsive design, le widget de discussion et les indicateurs visuels ;
 - **Sessions PHP** pour l'authentification, le panier et la protection CSRF.
 
 Le code reste volontairement limité aux fonctionnalités communes à PHP 8.0, PHP 8.1,
@@ -41,12 +42,21 @@ TyldenHounsa/
 |-- TP7b.pdf                          Sujet des travaux pratiques (intégration AJAX)
 |
 |-- assets/
-|   |-- css/style.css                 Feuille de style commune et états de validation formulaires
+|   |-- css/style.css                 Feuille de style commune, formulaires et thème du tchat
 |   |-- js/main.js                    Script principal commun
 |   |-- js/panier.js                  Compte à rebours temps réel des réservations du panier
 |   |-- js/inscription.js             Validation en direct des champs et inscription AJAX (TP 7B)
 |   |-- js/connexion.js               Validation et connexion AJAX sans rechargement (TP 7B)
+|   |-- js/chat.js                    Gestion du tchat en direct (polling, scroll et AJAX avec jQuery)
 |   `-- images/                        Images des produits
+|
+|-- includes/data/
+|   |-- model_weights.json            Dictionnaire des poids et biais du perceptron
+|   `-- chat_config.json              Configuration optionnelle de la durée de vie des messages
+|
+|-- includes/filter/
+|   |-- data/sampled_train/           Corpus de textes annotés
+|   `-- model/train_filter.py         Entraînement TF-IDF + perceptron et export des poids
 |
 |-- includes/php/
 |   |-- bd.php                        Connexion PDO à MySQL
@@ -56,10 +66,15 @@ TyldenHounsa/
 |   |-- check_email.php               Alias de redirection vers verifier_email.php
 |   |-- submit_connexion.php          Traitement hybride (AJAX/POST classique) de la connexion
 |   |-- submit_formulaire.php         Traitement hybride (AJAX/POST classique) de l'inscription
-|   `-- disconnect.php                Fermeture de session
+|   |-- disconnect.php                Fermeture de session
+|   |-- chat_widget.php               Bulle HTML flottante du tchat
+|   |-- chat_send.php                 Envoi AJAX, modération et insertion en base
+|   |-- chat_fetch.php                Récupération AJAX des messages actifs et formatage
+|   |-- chat_filter.php               Inférence O(m) du filtre de modération
+|   `-- chat_config.php               Paramétrage de la rétention et fonction de purge
 |
 `-- database/
-    `-- computer_database.sql         Schéma et données initiales
+    `-- computer_database.sql         Schéma et données initiales (dont table chat_messages)
 ```
 
 ## 3. Flux applicatif
@@ -318,6 +333,15 @@ Chaque article d'un panier est enregistré sur une ligne distincte. La structure
 conserve ainsi tous les champs demandés tout en permettant une commande composée de
 plusieurs articles.
 
+Structure de `chat_messages` :
+
+| Colonne | Type | Rôle |
+|---|---|---|
+| `id_message` | `int` | Identifiant auto-incrémenté du message |
+| `id_user` | `int UNSIGNED` | Auteur du message et clé étrangère vers `user` |
+| `message` | `varchar(256)` | Texte du message (limité à 256 caractères) |
+| `date_envoi` | `datetime` | Date et heure de publication du message |
+
 ## 11. Sécurité et intégrité
 
 - Les requêtes utilisent des paramètres PDO afin d'éviter la concaténation de valeurs
@@ -335,8 +359,42 @@ plusieurs articles.
 - La réservation verrouille l'article avec `FOR UPDATE` avant de diminuer le stock.
 - Une réservation expirée restitue sa quantité au stock dans une transaction.
 - Les données de la page d'historique sont filtrées par le client connecté.
+- Les messages du tchat sont validés en longueur (256 caractères max) et filtrés par le modèle de modération avant insertion.
 
-## 12. Évolutions possibles
+## 12. Messagerie instantanée et modération automatique
+
+### Interface et interactions en direct (jQuery)
+
+Le tchat général se présente sous la forme d'une bulle flottante accessible en bas à droite de l'écran sur l'ensemble des pages principales (`index.php`, `article.php`, `panier.php`, `compte.php`, `historique.php`). L'interface adopte la charte graphique sombre et dorée du site (`#ffcc00` et `#171717`).
+
+- **Gestion asynchrone :** [`assets/js/chat.js`](assets/js/chat.js) exploite jQuery pour ouvrir la boîte de dialogue, récupérer périodiquement les nouveaux messages via `$.getJSON` (`includes/php/chat_fetch.php`) et soumettre les envois via `$.ajax` (`includes/php/chat_send.php`).
+- **Expérience de lecture :** le défilement est isolé (`overscroll-behavior: contain` et interception de l'événement `wheel`) pour empêcher les gestes de défilement d'affecter la page en arrière-plan. L'auto-scroll vers le bas est suspendu dès que l'utilisateur remonte dans l'historique pour lire d'anciens messages.
+- **Règles d'accès et format :** seuls les utilisateurs authentifiés (`$_SESSION['id_client']`) peuvent poster. La longueur est limitée à 256 caractères et l'affichage suit le format standardisé : `Auteur dit 'Message'`.
+
+### Modération automatique (TF-IDF & Perceptron)
+
+Afin d'empêcher la diffusion de messages inappropriés ou haineux, chaque message soumis passe par un filtre de décision avant insertion en base de données.
+
+1. **Entraînement hors-ligne (`includes/filter/model/train_filter.py`) :**
+   - Corpus d'entraînement équilibré de messages annotés (`hate` et `noHate`).
+   - Vectorisation TF-IDF manuelle : extraction des tokens par expression régulière (`\b[a-zA-Z]{2,}\b`), calcul des fréquences documentaires et des scores IDF, puis conversion en matrice creuse `csr_matrix`.
+   - Modèle Perceptron entraîné avec `sklearn.linear_model.Perceptron`.
+   - Exportation des poids et du biais dans un fichier JSON compact ([`includes/data/model_weights.json`](includes/data/model_weights.json)).
+
+2. **Inférence en temps constant côté serveur (`includes/php/chat_filter.php`) :**
+   - Le serveur PHP charge le dictionnaire des poids en mémoire au premier appel.
+   - Pour chaque message, les mots sont extraits et sommés avec le biais : score = $b + \sum w_i$.
+   - L'opération s'exécute en complexité $O(m)$ par simple consultation de table de hachage, où $m$ est le nombre de mots du message, sans calcul matriciel lourd.
+   - Si score $\ge 0$, le message est accepté. Si score $< 0$, le message est bloqué et une réponse HTTP `400` est retournée avec un message d'avertissement affiché directement dans le widget.
+
+### Rétention et purge automatique des messages
+
+La durée de vie des messages est centralisée dans [`includes/php/chat_config.php`](includes/php/chat_config.php) via la constante `CHAT_MESSAGE_LIFETIME_MINUTES` (fixée par défaut à 10 minutes).
+
+- Une surcharge dynamique sans modification de code est supportée via le fichier optionnel `includes/data/chat_config.json`.
+- La fonction `purgeExpiredChatMessages()` supprime automatiquement les messages dont la date d'envoi dépasse la durée de rétention lors de chaque lecture et de chaque envoi.
+
+## 13. Évolutions possibles
 
 - déplacer les identifiants MySQL de `bd.php` vers des variables d'environnement ;
 - ajouter une gestion dédiée des lignes d'une même commande si un identifiant de
