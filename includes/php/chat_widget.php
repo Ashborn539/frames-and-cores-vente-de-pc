@@ -3,8 +3,8 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require_once __DIR__ . '/chat_config.php';
-$isConnected = !empty($_SESSION['id_client']);
-$lifetimeMinutes = getChatMessageLifetimeMinutes();
+$estConnecte = !empty($_SESSION['id_client']);
+$dureeMinutes = getChatMessageLifetimeMinutes();
 ?>
 <div id="chat-widget-container">
     <!-- Boite de dialogue -->
@@ -12,7 +12,7 @@ $lifetimeMinutes = getChatMessageLifetimeMinutes();
         <div class="chat-header">
             <div class="chat-header-title">
                 <h3>Discussion générale</h3>
-                <span class="chat-duration-badge" id="chat-duration-badge"><?php echo $lifetimeMinutes; ?> min</span>
+                <span class="chat-duration-badge" id="chat-duration-badge"><?php echo $dureeMinutes; ?> min</span>
             </div>
             <button id="chat-close-btn" type="button" aria-label="Fermer le tchat">&times;</button>
         </div>
@@ -24,7 +24,7 @@ $lifetimeMinutes = getChatMessageLifetimeMinutes();
         <div id="chat-error-alert" class="chat-alert-hidden"></div>
 
         <div class="chat-footer">
-            <?php if ($isConnected): ?>
+            <?php if ($estConnecte): ?>
                 <form id="chat-form" autocomplete="off">
                     <input 
                         type="text" 

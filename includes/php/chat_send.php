@@ -29,16 +29,16 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $message = trim((string) ($_POST['message'] ?? ''));
-$messageLength = mb_strlen($message, 'UTF-8');
+$longueurMessage = mb_strlen($message, 'UTF-8');
 
 // Controle de la longueur du message
-if ($messageLength === 0) {
+if ($longueurMessage === 0) {
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Le message ne peut pas être vide.']);
     exit;
 }
 
-if ($messageLength > 256) {
+if ($longueurMessage > 256) {
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Le message ne doit pas dépasser 256 caractères.']);
     exit;
@@ -62,8 +62,8 @@ try {
     $bdd = getBD();
     purgeExpiredChatMessages($bdd);
 
-    $stmt = $bdd->prepare("INSERT INTO `chat_messages` (`id_user`, `message`, `date_envoi`) VALUES (:id_user, :message, NOW())");
-    $stmt->execute([
+    $requete = $bdd->prepare("INSERT INTO `chat_messages` (`id_user`, `message`, `date_envoi`) VALUES (:id_user, :message, NOW())");
+    $requete->execute([
         'id_user' => (int) $idClient,
         'message' => $message
     ]);
@@ -72,8 +72,8 @@ try {
         'success' => true,
         'message' => 'Message envoyé avec succès.'
     ]);
-} catch (PDOException $e) {
-    error_log($e->getMessage());
+} catch (PDOException $exception) {
+    error_log($exception->getMessage());
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Erreur de base de données.']);
 }

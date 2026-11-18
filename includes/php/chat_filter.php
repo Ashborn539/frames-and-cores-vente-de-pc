@@ -3,37 +3,37 @@ declare(strict_types=1);
 
 function evaluateMessageSafety(string $message): array
 {
-    static $model = null;
+    static $modele = null;
 
     // Charge le dictionnaire des poids au premier appel
-    if ($model === null) {
-        $jsonPath = __DIR__ . '/../data/model_weights.json';
-        if (!file_exists($jsonPath)) {
-            $jsonPath = __DIR__ . '/../filter/data/model_weights.json';
+    if ($modele === null) {
+        $cheminJson = __DIR__ . '/../data/model_weights.json';
+        if (!file_exists($cheminJson)) {
+            $cheminJson = __DIR__ . '/../filter/data/model_weights.json';
         }
-        if (!file_exists($jsonPath)) {
+        if (!file_exists($cheminJson)) {
             return ['safe' => true, 'score' => 0.0, 'words_matched' => []];
         }
-        $content = file_get_contents($jsonPath);
-        $model = json_decode($content, true) ?: ['bias' => 0.0, 'weights' => []];
+        $contenu = file_get_contents($cheminJson);
+        $modele = json_decode($contenu, true) ?: ['bias' => 0.0, 'weights' => []];
     }
 
-    $bias = (float) ($model['bias'] ?? 0.0);
-    $weights = $model['weights'] ?? [];
+    $biais = (float) ($modele['bias'] ?? 0.0);
+    $poids = $modele['weights'] ?? [];
 
     // Extraction des mots en minuscules
-    preg_match_all('/\b[a-zA-Z]{2,}\b/', strtolower($message), $matches);
-    $tokens = array_unique($matches[0] ?? []);
+    preg_match_all('/\b[a-zA-Z]{2,}\b/', strtolower($message), $correspondances);
+    $mots = array_unique($correspondances[0] ?? []);
 
     // Addition des poids correspondants avec le biais
-    $score = $bias;
-    $matched = [];
+    $score = $biais;
+    $motsTrouves = [];
 
-    foreach ($tokens as $token) {
-        if (isset($weights[$token])) {
-            $w = (float) $weights[$token];
-            $score += $w;
-            $matched[$token] = $w;
+    foreach ($mots as $mot) {
+        if (isset($poids[$mot])) {
+            $poidsMot = (float) $poids[$mot];
+            $score += $poidsMot;
+            $motsTrouves[$mot] = $poidsMot;
         }
     }
 
@@ -41,6 +41,6 @@ function evaluateMessageSafety(string $message): array
     return [
         'safe' => $score >= 0.0,
         'score' => round($score, 4),
-        'words_matched' => $matched
+        'words_matched' => $motsTrouves
     ];
 }
