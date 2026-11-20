@@ -1,33 +1,24 @@
 <?php
-    session_start();
-    require_once('./includes/php/csrf.php');
-    $csrfToken = csrfToken();
+session_start();
+require_once('./includes/php/csrf.php');
+require_once('./includes/php/bd.php');
+require_once('./includes/php/reservation.php');
 
-    /**
-     * Normalise un nom pour son affichage avec une première lettre en majuscule.
-     *
-     * @param string $name Nom à normaliser.
-     * @return string Nom normalisé.
-     */
-    function formatUserName(string $name): string
-    {
-        $name = mb_strtolower(trim($name), 'UTF-8');
-        return mb_strtoupper(mb_substr($name, 0, 1, 'UTF-8'), 'UTF-8')
-            . mb_substr($name, 1, null, 'UTF-8');
-    }
+$csrfToken = csrfToken();
 
-    $nomUtilisateur = htmlspecialchars(formatUserName((string) ($_SESSION['nom'] ?? '')), ENT_QUOTES, 'UTF-8');
-    $prenomUtilisateur = htmlspecialchars(formatUserName((string) ($_SESSION['prenom'] ?? '')), ENT_QUOTES, 'UTF-8');
-    $compteUrl = $nomUtilisateur !== '' && $prenomUtilisateur !== '' ? 'compte.php' : 'connexion.php';
+$prenomSession = trim((string) ($_SESSION['prenom'] ?? ''));
+$nomSession = trim((string) ($_SESSION['nom'] ?? ''));
+$utilisateurConnecte = ($prenomSession !== '' || $nomSession !== '');
+$nomAffiche = htmlspecialchars(mb_convert_case($prenomSession . ' ' . $nomSession, MB_CASE_TITLE, 'UTF-8'), ENT_QUOTES, 'UTF-8');
+$compteUrl = $utilisateurConnecte ? 'compte.php' : 'connexion.php';
 ?>
-
 <!DOCTYPE html>
 <html lang="fr">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="description">
+    <meta name="description" content="Frames & cores - Vente de PC et matériel informatique">
     <title>Frames & cores</title>
     <link rel="stylesheet" href="./assets/css/style.css">
 </head>
@@ -35,8 +26,8 @@
 <body>
     <h1 id="title">Frames & cores</h1>
 
-    <?php if ($nomUtilisateur !== '' && $prenomUtilisateur !== ''): // Affiche l'accueil personnalisé si la session est authentifiée. ?>
-        <p class="welcome-message">Bienvenue <?php echo $prenomUtilisateur . ' ' . $nomUtilisateur; ?>.</p>
+    <?php if ($utilisateurConnecte): ?>
+        <p class="welcome-message">Bienvenue <?php echo $nomAffiche; ?>.</p>
     <?php endif; ?>
 
     <div class="header-nav">
@@ -47,37 +38,29 @@
     </div>
 
     <div class="products-container">
-
-        <?php require_once('./includes/php/bd.php');
-        require_once('./includes/php/reservation.php');
+        <?php
         $bdd = getBD();
         cleanupExpiredReservations($bdd);
-        $rep = $bdd -> query(
-            "SELECT id_art, nom, quantite, prix, url_photo, description
-            FROM articles
-            ORDER BY id_art"
-        );
-
+        $rep = $bdd->query("SELECT id_art, nom, quantite, prix, url_photo, description FROM articles ORDER BY id_art");
         $articles = $rep->fetchAll();
 
-        foreach ($articles as $article): // Prépare les données avant leur rendu dans la carte.
-            $id = (int) $article["id_art"];
+        foreach ($articles as $article):
+            $id = (int) $article['id_art'];
             $nom = htmlspecialchars($article['nom'], ENT_QUOTES, 'UTF-8');
-            $description = htmlspecialchars($article['description'], ENT_QUOTES, 'UTF-8');
-            $urlPhoto = htmlspecialchars($article['url_photo'], ENT_QUOTES, 'UTF-8');
+            $urlPhoto = htmlspecialchars($article['url_photo'] ?? '', ENT_QUOTES, 'UTF-8');
             $quantite = (int) $article['quantite'];
             $prix = number_format((float) $article['prix'], 2, ',', ' ');
+            $stockClass = ($quantite === 0) ? 'stock-not-ok' : 'stock-ok';
         ?>
             <div class="card">
                 <div class="card-image">
-                    <img src="<?php echo $urlPhoto ?>" alt="<?php echo $nom ?>" loading="lazy">
+                    <img src="<?php echo $urlPhoto; ?>" alt="<?php echo $nom; ?>" loading="lazy">
                 </div>
                 <div class="card-info">
-                    <p class="product-id">Référence : PC-<?php echo $id ?></p>
-                    <h2><?php echo $nom ?></h2>
-                    <?php $stockClass = $quantite === 0 ? 'stock-not-ok' : 'stock-ok'; ?>
-                    <p class="quantity <?php echo $stockClass; ?> ">Quantité disponible : <?php echo $quantite ?></p>
-                    <strong class="price"><?php echo $prix ?> €</strong>
+                    <p class="product-id">Référence : PC-<?php echo $id; ?></p>
+                    <h2><?php echo $nom; ?></h2>
+                    <p class="quantity <?php echo $stockClass; ?>">Quantité disponible : <?php echo $quantite; ?></p>
+                    <strong class="price"><?php echo $prix; ?> €</strong>
                     <form action="article.php" method="post">
                         <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8'); ?>">
                         <input type="hidden" name="id_art" value="<?php echo $id; ?>">
@@ -86,12 +69,9 @@
                 </div>
             </div>
         <?php endforeach; ?>
+    </div>
 
-</div>
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <script src="./assets/js/main.js"></script>
-
-    <!-- Intégration du Widget Tchat -->
     <?php include_once('./includes/php/chat_widget.php'); ?>
     <script src="./assets/js/chat.js"></script>
 </body>

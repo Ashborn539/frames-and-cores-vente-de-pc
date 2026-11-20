@@ -1,17 +1,11 @@
 <?php
-
 declare(strict_types=1);
 
-// Modifiez ces deux valeurs pour ajuster les durees sans changer la logique metier.
 const CART_RESERVATION_DURATION_SECONDS = 15 * 60;
 const LAST_STOCK_RESERVATION_DURATION_SECONDS = 5 * 60;
 
 /**
- * Recherche les reservations actives arrivees a expiration.
- * Restitue les quantites au stock, marque les reservations comme expirees
- * et gere une transaction si aucune transaction n'est deja ouverte.
- *
- * @return int Nombre de reservations expirees.
+ * Recherche les réservations actives expirées, restitue le stock et marque les réservations comme expirées.
  */
 function cleanupExpiredReservations(PDO $bdd): int
 {
@@ -31,6 +25,13 @@ function cleanupExpiredReservations(PDO $bdd): int
         );
         $expiredReservations = $reservationQuery->fetchAll();
 
+        if (empty($expiredReservations)) {
+            if ($startedTransaction) {
+                $bdd->commit();
+            }
+            return 0;
+        }
+
         $restoreStockQuery = $bdd->prepare(
             'UPDATE articles
             SET quantite = quantite + :quantite
@@ -44,12 +45,10 @@ function cleanupExpiredReservations(PDO $bdd): int
         );
 
         foreach ($expiredReservations as $reservation) {
-            # Pour chaque reservation expirée on restaure le stock
             $restoreStockQuery->execute([
                 'quantite' => (int) $reservation['quantite'],
                 'id_art' => (int) $reservation['id_art'],
             ]);
-            # On les marques comme expiree
             $expireReservationQuery->execute([
                 'id_reservation' => (int) $reservation['id_reservation'],
             ]);
@@ -69,23 +68,14 @@ function cleanupExpiredReservations(PDO $bdd): int
 }
 
 /**
- * Reserve une quantite d'article pour un client.
- * Verrouille l'article, controle le stock, cree ou met a jour la reservation,
- * puis diminue le stock disponible. La duree depend du stock restant.
- *
- * @return int Quantite totale reservee par le client pour cet article.
- * @throws InvalidArgumentException Si les donnees fournies sont invalides.
- * @throws RuntimeException Si l'article n'existe pas ou si le stock est insuffisant.
+ * Réserve une quantité d'article pour un client.
  */
 function reserveArticle(PDO $bdd, int $idClient, int $idArticle, int $quantity): int
 {
     if ($idClient < 1 || $idArticle < 0 || $quantity < 1) {
-        # Si les parametres sint invalides
-        throw new InvalidArgumentException('Les donnees de reservation sont invalides.');
+        throw new InvalidArgumentException('Les données de réservation sont invalides.');
     }
 
-    # Liste des infos sur l'article a reserver
-    # La transaction est ouverte par l'appelant.
     $articleQuery = $bdd->prepare(
         'SELECT id_art, quantite
         FROM articles
@@ -96,11 +86,9 @@ function reserveArticle(PDO $bdd, int $idClient, int $idArticle, int $quantity):
     $article = $articleQuery->fetch();
 
     if (!$article || $quantity > (int) $article['quantite']) {
-    # Si la quantite demandee depasse celle disponible
-    throw new RuntimeException('Le stock disponible est insuffisant.');
+        throw new RuntimeException('Le stock disponible est insuffisant.');
     }
 
-    # Liste des reservations active pour le client
     $existingQuery = $bdd->prepare(
         "SELECT id_reservation, quantite
         FROM reservations
@@ -116,16 +104,15 @@ function reserveArticle(PDO $bdd, int $idClient, int $idArticle, int $quantity):
     $existingReservation = $existingQuery->fetch();
 
     $remainingStock = (int) $article['quantite'] - $quantity;
-    # Si il s'agit du/des derniers exemplaires de l'article ?... sinon :... 
-    $duration = $remainingStock === 0
+    $duration = ($remainingStock === 0)
         ? LAST_STOCK_RESERVATION_DURATION_SECONDS
         : CART_RESERVATION_DURATION_SECONDS;
+
     $expiration = (new DateTimeImmutable('now', new DateTimeZone('UTC')))
         ->modify('+' . $duration . ' seconds')
         ->format('Y-m-d H:i:s');
 
     if ($existingReservation) {
-        # Si il existe deja une reservation active pour cet article, on la maj
         $totalQuantity = (int) $existingReservation['quantite'] + $quantity;
         $reservationQuery = $bdd->prepare(
             'UPDATE reservations
@@ -138,7 +125,7 @@ function reserveArticle(PDO $bdd, int $idClient, int $idArticle, int $quantity):
             'date_expiration' => $expiration,
             'id_reservation' => (int) $existingReservation['id_reservation'],
         ]);
-    } else { # Sinon on crée la reservation 
+    } else {
         $totalQuantity = $quantity;
         $reservationQuery = $bdd->prepare(
             "INSERT INTO reservations
@@ -154,7 +141,6 @@ function reserveArticle(PDO $bdd, int $idClient, int $idArticle, int $quantity):
         ]);
     }
 
-    # On mets a jour le stock
     $stockQuery = $bdd->prepare(
         'UPDATE articles
         SET quantite = quantite - :quantite
@@ -169,13 +155,10 @@ function reserveArticle(PDO $bdd, int $idClient, int $idArticle, int $quantity):
 }
 
 /**
- * Annule toutes les reservations actives d'un client.
- * Restitue chaque quantite au stock et change le statut des reservations
- * concernees en annulee.
+ * Annule toutes les réservations actives d'un client et restitue le stock.
  */
 function cancelClientReservations(PDO $bdd, int $idClient): void
 {
-    # Liste des reservations active du client
     $reservationQuery = $bdd->prepare(
         "SELECT id_reservation, id_art, quantite
         FROM reservations
@@ -185,6 +168,9 @@ function cancelClientReservations(PDO $bdd, int $idClient): void
     $reservationQuery->execute(['id_client' => $idClient]);
     $reservations = $reservationQuery->fetchAll();
 
+    if (empty($reservations)) {
+        return;
+    }
 
     $restoreStockQuery = $bdd->prepare(
         'UPDATE articles
@@ -198,7 +184,6 @@ function cancelClientReservations(PDO $bdd, int $idClient): void
     );
 
     foreach ($reservations as $reservation) {
-        # Pour chaques resa actives on restaure le stock et le marque comme annulée
         $restoreStockQuery->execute([
             'quantite' => (int) $reservation['quantite'],
             'id_art' => (int) $reservation['id_art'],
@@ -210,10 +195,7 @@ function cancelClientReservations(PDO $bdd, int $idClient): void
 }
 
 /**
- * Recupere les reservations actives d'un client avec les informations utiles
- * sur les articles associes, notamment leur nom, leur prix et leur stock.
- *
- * @return array Liste des reservations actives du client.
+ * Récupère les réservations actives d'un client avec les informations des articles.
  */
 function fetchActiveReservations(PDO $bdd, int $idClient): array
 {
@@ -231,11 +213,7 @@ function fetchActiveReservations(PDO $bdd, int $idClient): array
 }
 
 /**
- * Recupere et verrouille les reservations actives d'un client.
- * Ce verrouillage empeche une modification concurrente pendant une operation
- * qui doit traiter les reservations et leur stock de maniere coherente.
- *
- * @return array Reservations actives verrouillees.
+ * Récupère et verrouille les réservations actives d'un client.
  */
 function lockActiveReservations(PDO $bdd, int $idClient): array
 {

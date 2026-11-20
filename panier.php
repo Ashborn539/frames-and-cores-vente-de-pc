@@ -4,16 +4,15 @@ require_once ('./includes/php/bd.php');
 require_once ('./includes/php/csrf.php');
 require_once ('./includes/php/reservation.php');
 
-# Suppression de la reservation quand le panier est vidé
+$idClient = (int) ($_SESSION['id_client'] ?? 0);
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['vider_panier'])) {
     requireValidCsrfToken();
-    $idClient = (int) ($_SESSION['id_client'] ?? 0);
 
     if ($idClient > 0) {
         $bdd = getBD();
         $bdd->beginTransaction();
         try {
-            cleanupExpiredReservations($bdd);
             cancelClientReservations($bdd, $idClient);
             $bdd->commit();
         } catch (Throwable $exception) {
@@ -29,30 +28,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['vider_panier'])) {
     exit;
 }
 
-$idClient = (int) ($_SESSION['id_client'] ?? 0);
 $csrfToken = csrfToken();
 $articles = [];
 $total = 0.0;
 
-# Parcours des articles réservé et donc dans le panier et cacule du temps restant
 if ($idClient > 0) {
     $bdd = getBD();
     cleanupExpiredReservations($bdd);
     $reservations = fetchActiveReservations($bdd, $idClient);
 
     foreach ($reservations as $reservation) {
-        # la date d'expiration est convertis et rendus constante
-        $expiration = new DateTimeImmutable(
-            (string) $reservation['date_expiration'],
-            new DateTimeZone('UTC')
-        );
-        # Calcule du temps restant
-        $remainingSeconds = max(0, $expiration->getTimestamp() - time());
+        $expiration = new DateTimeImmutable((string) $reservation['date_expiration'], new DateTimeZone('UTC'));
         $quantite = (int) $reservation['quantite'];
         $sousTotal = $quantite * (float) $reservation['prix'];
-        $reservation['quantite_panier'] = $quantite;
         $reservation['sous_total'] = $sousTotal;
-        $reservation['secondes_restantes'] = $remainingSeconds;
+        $reservation['secondes_restantes'] = max(0, $expiration->getTimestamp() - time());
         $articles[] = $reservation;
         $total += $sousTotal;
     }
@@ -64,7 +54,7 @@ if ($idClient > 0) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Panier de produits">
+    <meta name="description" content="Votre panier d'achats">
     <title>Panier - Frames &amp; cores</title>
     <link rel="stylesheet" href="./assets/css/style.css">
 </head>
@@ -81,7 +71,7 @@ if ($idClient > 0) {
                     <div class="cart-item">
                         <div>
                             <h2><?php echo htmlspecialchars($article['nom'], ENT_QUOTES, 'UTF-8'); ?></h2>
-                            <p>Quantité réservée : <?php echo $article['quantite_panier']; ?></p>
+                            <p>Quantité réservée : <?php echo (int) $article['quantite']; ?></p>
                             <p class="reservation-countdown"
                                 data-expires-at="<?php echo htmlspecialchars((string) $article['date_expiration'], ENT_QUOTES, 'UTF-8'); ?>"
                                 data-stock-empty="<?php echo (int) $article['stock_disponible'] === 0 ? 'true' : 'false'; ?>">
@@ -108,8 +98,6 @@ if ($idClient > 0) {
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="./assets/js/panier.js"></script>
-
-    <!-- Intégration du Widget Tchat -->
     <?php include_once('./includes/php/chat_widget.php'); ?>
     <script src="./assets/js/chat.js"></script>
 </body>

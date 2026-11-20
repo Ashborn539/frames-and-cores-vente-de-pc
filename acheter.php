@@ -4,73 +4,66 @@ require_once ('./includes/php/bd.php');
 require_once ('./includes/php/csrf.php');
 require_once ('./includes/php/reservation.php');
 
-$erreur = '';
-$commandeEnregistree = false;
 $idClient = (int) ($_SESSION['id_client'] ?? 0);
-
-# Une commande doit être rattachée à un compte identifié.
 if ($idClient === 0) {
     header('Location: connexion.php');
     exit;
 }
 
-# recuperation des resa actives du client
 $bdd = getBD();
-cleanupExpiredReservations($bdd);
-$reservations = fetchActiveReservations($bdd, $idClient);
-
-if ($reservations === []) {
-    header('Location: panier.php');
-    exit;
-}
+$erreur = '';
+$commandeEnregistree = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     requireValidCsrfToken();
 
-try {
-    # verouillage des lignes de stock jusqu'à la fin de la transaction.
-    $bdd->beginTransaction();
+    try {
+        $bdd->beginTransaction();
+        cleanupExpiredReservations($bdd);
+        $reservations = lockActiveReservations($bdd, $idClient);
+
+        if ($reservations === []) {
+            throw new RuntimeException('Les réservations du panier ont expiré.');
+        }
+
+        $commandeRequete = $bdd->prepare(
+            'INSERT INTO Commandes (id_art, id_client, quantite, envoi)
+            VALUES (:id_art, :id_client, :quantite, FALSE)'
+        );
+        $confirmationRequete = $bdd->prepare(
+            "UPDATE reservations
+            SET statut = 'confirmee'
+            WHERE id_reservation = :id_reservation AND statut = 'active'"
+        );
+
+        foreach ($reservations as $reservation) {
+            $commandeRequete->execute([
+                'id_art' => (int) $reservation['id_art'],
+                'id_client' => $idClient,
+                'quantite' => (int) $reservation['quantite'],
+            ]);
+            $confirmationRequete->execute([
+                'id_reservation' => (int) $reservation['id_reservation'],
+            ]);
+        }
+
+        $bdd->commit();
+        unset($_SESSION['panier']);
+        $commandeEnregistree = true;
+    } catch (Throwable $exception) {
+        if ($bdd->inTransaction()) {
+            $bdd->rollBack();
+        }
+        error_log($exception->getMessage());
+        $erreur = 'La commande n’a pas pu être enregistrée. Veuillez réessayer.';
+    }
+} else {
     cleanupExpiredReservations($bdd);
-    $reservations = lockActiveReservations($bdd, $idClient);
+    $reservations = fetchActiveReservations($bdd, $idClient);
     if ($reservations === []) {
-        throw new RuntimeException('Les réservations du panier ont expiré.');
+        header('Location: panier.php');
+        exit;
     }
-
-    $commandeRequete = $bdd->prepare(
-        'INSERT INTO Commandes (id_art, id_client, quantite, envoi)
-        VALUES (:id_art, :id_client, :quantite, FALSE)'
-    );
-    $confirmationRequete = $bdd->prepare(
-        "UPDATE reservations
-        SET statut = 'confirmee'
-        WHERE id_reservation = :id_reservation AND statut = 'active'"
-    );
-
-    foreach ($reservations as $reservation) {
-        $idArt = (int) $reservation['id_art'];
-        $quantite = (int) $reservation['quantite'];
-
-        $commandeRequete->execute([
-            'id_art' => $idArt,
-            'id_client' => $idClient,
-            'quantite' => $quantite,
-        ]);
-        $confirmationRequete->execute([
-            'id_reservation' => (int) $reservation['id_reservation'],
-        ]);
-    }
-
-    # Le panier n'est supprimé qu'après la validation des opérations SQL.
-    $bdd->commit();
-    unset($_SESSION['panier']);
-    $commandeEnregistree = true;
-} catch (Throwable $exception) {
-    if (isset($bdd) && $bdd->inTransaction()) {
-        $bdd->rollBack();
-    }
-    error_log($exception->getMessage());
-    $erreur = 'La commande n’a pas pu être enregistrée. Veuillez réessayer.';
-}
 }
 
 $csrfToken = csrfToken();

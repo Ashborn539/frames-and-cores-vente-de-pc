@@ -8,19 +8,9 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/bd.php';
 require_once __DIR__ . '/csrf.php';
 
-// Détection d'un appel AJAX
-$isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
-    || (isset($_POST['ajax']) && (string) $_POST['ajax'] === '1')
-    || (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'));
+$isAjax = !empty($_POST['ajax'])
+    || (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest');
 
-/**
- * Gère l'envoi d'un message d'erreur de connexion (JSON en AJAX, ou redirection classique).
- *
- * @param string $message Message à destination de l'utilisateur.
- * @param bool $isAjax Indique si la requête est AJAX.
- * @param int $statusCode Code de statut HTTP.
- * @return never
- */
 function handleLoginError(string $message, bool $isAjax, int $statusCode = 200): void
 {
     if ($isAjax) {
@@ -44,23 +34,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     handleLoginError('Veuillez utiliser le formulaire de connexion.', $isAjax);
 }
 
-// Vérification CSRF
-$token = (string) ($_POST['csrf_token'] ?? '');
-$tokens = $_SESSION['csrf_tokens'] ?? [];
-$isTokenValid = false;
-
-foreach ($tokens as $validToken) {
-    if (is_string($validToken) && hash_equals($validToken, $token)) {
-        $isTokenValid = true;
-        break;
-    }
-}
-
-if (!$isTokenValid) {
+if (!isValidCsrfToken((string) ($_POST['csrf_token'] ?? ''))) {
     handleLoginError('Requête refusée. Le jeton de sécurité est absent ou expiré.', $isAjax, 403);
 }
 
-// Validation des paramètres
 $email = trim((string) ($_POST['mail'] ?? ''));
 $motDePasse = (string) ($_POST['mdp'] ?? '');
 
@@ -74,12 +51,7 @@ if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
 
 try {
     $bdd = getBD();
-    $requete = $bdd->prepare(
-        'SELECT id_user, nom, prenom, mdp
-         FROM `user`
-         WHERE mail = :email
-         LIMIT 1'
-    );
+    $requete = $bdd->prepare('SELECT id_user, nom, prenom, mdp FROM `user` WHERE mail = :email LIMIT 1');
     $requete->execute(['email' => $email]);
     $utilisateur = $requete->fetch();
 } catch (PDOException $exception) {
